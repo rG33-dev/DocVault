@@ -19,8 +19,10 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-//import androidx.compose.material.icons.automirrored.filled.Arrowz
+//import androidx.compose.material.icons.automirrored.filled.Description
+import androidx.compose.material.icons.automirrored.filled.EventNote
+//import androidx.compose.material.icons.automirrored.filled.History
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +46,14 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import kotlinx.coroutines.launch
 
+/**
+ * The main dashboard of DocVault.
+ * 
+ * Features premium Productivity & Finance UI with curved headers and bold typography.
+ * Supports Categorized saving where users can pick a type (ID, Marksheet, etc.) for each document.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
@@ -56,12 +65,19 @@ fun VaultScreen(
     val qrResult by viewModel.qrResult.collectAsState(initial = null)
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     
     var showSourcePicker by remember { mutableStateOf(false) }
     var isQrScanningMode by remember { mutableStateOf(false) }
     var showCombineDialog by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
     
+    // Metadata Dialog State for saving new docs with specific types
+    var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingFileType by remember { mutableStateOf<String?>(null) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+
+    val sheetState = rememberModalBottomSheetState()
     val selectedDocIds = remember { mutableStateListOf<Long>() }
     val isSelectionMode by remember { derivedStateOf { selectedDocIds.isNotEmpty() } }
 
@@ -85,15 +101,9 @@ fun VaultScreen(
                 }
                 isQrScanningMode = false
             } else {
-                context.contentResolver.openInputStream(it)?.let { stream ->
-                    viewModel.addDocument(
-                        title = "Imported ${System.currentTimeMillis() % 1000}",
-                        category = DocumentCategory.OTHER,
-                        fileType = context.contentResolver.getType(it) ?: "image/jpeg",
-                        inputStream = stream,
-                        originalFileName = "import.jpg"
-                    )
-                }
+                pendingUri = it
+                pendingFileType = context.contentResolver.getType(it) ?: "image/jpeg"
+                showSaveDialog = true
             }
         }
     }
@@ -111,19 +121,20 @@ fun VaultScreen(
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
             scanningResult?.pdf?.let { pdf ->
-                context.contentResolver.openInputStream(pdf.uri)?.let { stream ->
-                    viewModel.addDocument("Scan ${System.currentTimeMillis() % 1000}", DocumentCategory.OTHER, "application/pdf", stream, "scan.pdf")
-                }
+                pendingUri = pdf.uri
+                pendingFileType = "application/pdf"
+                showSaveDialog = true
             } ?: scanningResult?.pages?.firstOrNull()?.let { page ->
-                context.contentResolver.openInputStream(page.imageUri)?.let { stream ->
-                    viewModel.addDocument("Scan ${System.currentTimeMillis() % 1000}", DocumentCategory.OTHER, "image/jpeg", stream, "scan.jpg")
-                }
+                pendingUri = page.imageUri
+                pendingFileType = "image/jpeg"
+                showSaveDialog = true
             }
         }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             VaultHeader(
                 isSelectionMode = isSelectionMode,
@@ -136,6 +147,9 @@ fun VaultScreen(
                         uiState.documents.find { it.id == id }?.let { viewModel.deleteDocument(it) }
                     }
                     selectedDocIds.clear()
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Deleted selected documents")
+                    }
                 },
                 searchQuery = uiState.searchQuery,
                 onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
@@ -210,19 +224,85 @@ fun VaultScreen(
             }
         }
 
+        if (showSaveDialog && pendingUri != null) {
+            var docTitle by remember { mutableStateOf("") }
+            var docCat by remember { mutableStateOf(DocumentCategory.OTHER) }
+            var catExpanded by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Document Info", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        OutlinedTextField(
+                            value = docTitle,
+                            onValueChange = { docTitle = it },
+                            label = { Text("Title") },
+                            placeholder = { Text("e.g. My ID Card") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box {
+                            OutlinedTextField(
+                                value = docCat.name,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Category") },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = { IconButton(onClick = { catExpanded = true }) { Icon(Icons.Default.ArrowDropDown, null) } }
+                            )
+                            DropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
+                                DocumentCategory.entries.forEach { cat ->
+                                    DropdownMenuItem(text = { Text(cat.name) }, onClick = { docCat = cat; catExpanded = false })
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (docTitle.isNotBlank()) {
+                                context.contentResolver.openInputStream(pendingUri!!)?.let { stream ->
+                                    viewModel.addDocument(docTitle, docCat, pendingFileType!!, stream, "imported_file")
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Document saved to vault")
+                                    }
+                                }
+                                showSaveDialog = false
+                            }
+                        },
+                        enabled = docTitle.isNotBlank()
+                    ) { Text("Save to Vault") }
+                },
+                dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") } }
+            )
+        }
+
         if (showCombineDialog) {
             var pdfTitle by remember { mutableStateOf("Combined Doc") }
             AlertDialog(
                 onDismissRequest = { showCombineDialog = false },
                 title = { Text("Bundle images into PDF", fontWeight = FontWeight.Bold) },
                 text = { OutlinedTextField(value = pdfTitle, onValueChange = { pdfTitle = it }, label = { Text("Document Title") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) },
-                confirmButton = { Button(onClick = { viewModel.combineToPdf(selectedDocIds.toList(), pdfTitle); selectedDocIds.clear(); showCombineDialog = false }) { Text("Create PDF") } },
+                confirmButton = { Button(onClick = { 
+                    viewModel.combineToPdf(selectedDocIds.toList(), pdfTitle)
+                    selectedDocIds.clear()
+                    showCombineDialog = false 
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Combined PDF saved to vault")
+                    }
+                }) { Text("Create PDF") } },
                 dismissButton = { TextButton(onClick = { showCombineDialog = false }) { Text("Cancel") } }
             )
         }
     }
 }
 
+/**
+ * Custom Header inspired by high-end dashboards.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultHeader(
@@ -238,6 +318,8 @@ fun VaultHeader(
     onCategorySelect: (DocumentCategory?) -> Unit,
     totalDocs: Int
 ) {
+    val isDark = isSystemInDarkTheme()
+    
     Column {
         Box(
             modifier = Modifier
@@ -263,7 +345,7 @@ fun VaultHeader(
                             IconButton(onClick = onCombineClick) { Icon(Icons.Default.PictureAsPdf, contentDescription = null) }
                             IconButton(onClick = onDeleteSelection) { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
                         } else {
-                            IconButton(onClick = onHistoryClick) { Icon(Icons.Default.History, contentDescription = null, tint = Color.White) }
+                            IconButton(onClick = onHistoryClick) { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null, tint = Color.White) }
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -298,7 +380,7 @@ fun VaultHeader(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSystemInDarkTheme()) Color.Black else Color.White
+                                color = if (isDark) Color.Black else Color.White
                             )
                         }
                     }
@@ -320,7 +402,7 @@ fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
         value = query,
         onValueChange = onQueryChange,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-        placeholder = { Text("Search title or tags...") },
+        placeholder = { Text("Search by title or tags...") },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         shape = RoundedCornerShape(16.dp),
         singleLine = true,
@@ -396,7 +478,7 @@ fun DocumentCard(document: Document, isSelected: Boolean, onClick: () -> Unit, o
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (document.fileType == "application/pdf") Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Image,
+                    imageVector = if (document.fileType == "application/pdf") Icons.AutoMirrored.Filled.EventNote else Icons.Default.Image,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )

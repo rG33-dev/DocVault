@@ -1,5 +1,6 @@
 package com.example.docvault.ui.detail
 
+import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+//mport androidx.compose.material.icons.automirrored.filled.Description
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,12 +30,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.docvault.domain.model.Document
 import com.example.docvault.domain.model.DocumentCategory
 import com.example.docvault.ui.components.LoadingScreen
+import kotlinx.coroutines.launch
 
 /**
  * Screen displaying the details of a document.
  * 
- * Inspired by modern smart-app designs with clean typography, 
- * large rounded corners, and deep surface colors.
+ * Redesigned with premium Productivity UI.
+ * Features a high-contrast preview and categorized metadata view.
+ * Supports Feature 4 (Edit & Delete) and Sharing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +46,10 @@ fun DocumentDetailScreen(
     viewModel: DocumentDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showProcessSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -48,6 +57,7 @@ fun DocumentDetailScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("", style = MaterialTheme.typography.titleLarge) },
@@ -62,6 +72,21 @@ fun DocumentDetailScreen(
                 actions = {
                     IconButton(onClick = { showEditDialog = true }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    }
+                    IconButton(onClick = { 
+                        val uri = viewModel.getShareUri(context)
+                        if (uri != null) {
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = context.contentResolver.getType(uri) ?: "*/*"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share Document"))
+                        } else {
+                            scope.launch { snackbarHostState.showSnackbar("Failed to prepare file for sharing") }
+                        }
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
@@ -87,14 +112,14 @@ fun DocumentDetailScreen(
                     ) {
                         Icon(Icons.Default.AutoFixHigh, contentDescription = null)
                         Spacer(Modifier.width(12.dp))
-                        Text("Optimize & Convert", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Optimize Document", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     ) { padding ->
         if (uiState.isLoading) {
-            LoadingScreen(message = "Fetching Document...")
+            LoadingScreen(message = "Fetching encrypted data...")
         } else if (uiState.error != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(uiState.error!!, color = MaterialTheme.colorScheme.error)
@@ -114,8 +139,8 @@ fun DocumentDetailScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Document?") },
-            text = { Text("This will permanently remove the encrypted file from your device storage.") },
+            title = { Text("Permanently Delete?") },
+            text = { Text("This will remove the encrypted file from your local storage. This action cannot be undone.") },
             confirmButton = {
                 Button(
                     onClick = { viewModel.deleteDocument(); showDeleteDialog = false; onNavigateBack() },
@@ -130,7 +155,11 @@ fun DocumentDetailScreen(
         EditDocumentDialog(
             document = uiState.document!!,
             onDismiss = { showEditDialog = false },
-            onConfirm = { title, category -> viewModel.updateMetadata(title, category); showEditDialog = false }
+            onConfirm = { title, category -> 
+                viewModel.updateMetadata(title, category)
+                showEditDialog = false
+                scope.launch { snackbarHostState.showSnackbar("Document updated") }
+            }
         )
     }
 
@@ -147,6 +176,7 @@ fun DocumentDetailScreen(
                 onConfirm = { compress, toPdf, aggressive ->
                     viewModel.processDocument(compress || aggressive, toPdf, targetSizeKb = if (aggressive) 39 else null)
                     showProcessSheet = false
+                    scope.launch { snackbarHostState.showSnackbar("Processing started...") }
                 }
             )
         }
@@ -172,18 +202,18 @@ fun DocumentDetailContent(
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Last updated ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(document.updatedAt))}",
+            text = "Added on ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(document.createdAt))}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
         )
         
         Spacer(Modifier.height(32.dp))
         
-        // Preview Card
+        // Preview Card with high corners
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp),
+                .height(350.dp),
             shape = RoundedCornerShape(32.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
         ) {
@@ -201,7 +231,7 @@ fun DocumentDetailContent(
                             contentScale = ContentScale.Fit
                         )
                     } else {
-                        Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.ErrorOutline, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -215,49 +245,45 @@ fun DocumentDetailContent(
         
         Spacer(Modifier.height(32.dp))
         
-        // Metadata Sections
-        SectionHeader("Technical Details")
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                InfoRow("Status", "Encrypted", isStatus = true)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-                InfoRow("Category", document.category.name)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-                InfoRow("Format", document.fileType.substringAfter("/").uppercase())
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-                InfoRow("Size", "${document.size / 1024} KB")
-            }
-        }
+        // Enhanced Metadata Sections
+        DetailSection(
+            title = "File Properties",
+            items = listOf(
+                "Category" to document.category.name,
+                "Format" to document.fileType.substringAfter("/").uppercase(),
+                "Size" to "${document.size / 1024} KB"
+            )
+        )
         
-        Spacer(Modifier.height(100.dp)) // Extra space for bottom bar
+        Spacer(Modifier.height(100.dp))
     }
 }
 
 @Composable
-fun SectionHeader(title: String) {
+fun DetailSection(title: String, items: List<Pair<String, String>>) {
     Text(
         text = title.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
     )
-}
-
-@Composable
-fun InfoRow(label: String, value: String, isStatus: Boolean = false) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isStatus) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                Spacer(Modifier.width(8.dp))
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            items.forEachIndexed { index, pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(pair.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Text(pair.second, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                }
+                if (index < items.size - 1) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                }
             }
-            Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -275,7 +301,7 @@ fun EditDocumentDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
-        title = { Text("Edit Metadata", fontWeight = FontWeight.Bold) },
+        title = { Text("Update Document", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
@@ -303,7 +329,7 @@ fun EditDocumentDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = { if (title.isNotBlank()) onConfirm(title, category) }) { Text("Save Changes") } },
+        confirmButton = { Button(onClick = { if (title.isNotBlank()) onConfirm(title, category) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -318,23 +344,23 @@ fun ProcessSheetContent(
     var toPdfChecked by remember { mutableStateOf(false) }
     var aggressiveChecked by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxWidth().padding(24.dp).padding(bottom = 16.dp)) {
-        Text("Optimize Document", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Impact: ${currentSize / 1024} KB", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+    Column(Modifier.fillMaxWidth().padding(24.dp).padding(bottom = 24.dp)) {
+        Text("Optimize & Transform", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Manage storage impact effectively.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         
         Spacer(Modifier.height(24.dp))
         
         Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)) {
             Column {
                 ListItem(
-                    headlineContent = { Text("Standard Compression", fontWeight = FontWeight.Bold) },
+                    headlineContent = { Text("Balanced Compression", fontWeight = FontWeight.Bold) },
                     leadingContent = { Icon(Icons.Default.HighQuality, null, tint = MaterialTheme.colorScheme.primary) },
                     trailingContent = { Switch(checked = compressChecked, onCheckedChange = { compressChecked = it; if (it) aggressiveChecked = false }) },
                     modifier = Modifier.clickable { compressChecked = !compressChecked; if (compressChecked) aggressiveChecked = false },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                 )
                 ListItem(
-                    headlineContent = { Text("Compress under 40KB", fontWeight = FontWeight.Bold) },
+                    headlineContent = { Text("Aggressive (< 40KB)", fontWeight = FontWeight.Bold) },
                     leadingContent = { Icon(Icons.Default.Speed, null, tint = Color(0xFFE67E22)) },
                     trailingContent = { Switch(checked = aggressiveChecked, onCheckedChange = { aggressiveChecked = it; if (it) compressChecked = false }) },
                     modifier = Modifier.clickable { aggressiveChecked = !aggressiveChecked; if (aggressiveChecked) compressChecked = false },
@@ -342,7 +368,7 @@ fun ProcessSheetContent(
                 )
                 if (!isPdf) {
                     ListItem(
-                        headlineContent = { Text("Generate PDF", fontWeight = FontWeight.Bold) },
+                        headlineContent = { Text("Generate PDF Format", fontWeight = FontWeight.Bold) },
                         leadingContent = { Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.secondary) },
                         trailingContent = { Switch(checked = toPdfChecked, onCheckedChange = { toPdfChecked = it }) },
                         modifier = Modifier.clickable { toPdfChecked = !toPdfChecked },
@@ -359,7 +385,7 @@ fun ProcessSheetContent(
             shape = RoundedCornerShape(20.dp),
             enabled = compressChecked || toPdfChecked || aggressiveChecked
         ) {
-            Text("Apply Selected Actions", fontWeight = FontWeight.ExtraBold)
+            Text("Process Now", fontWeight = FontWeight.ExtraBold)
         }
     }
 }

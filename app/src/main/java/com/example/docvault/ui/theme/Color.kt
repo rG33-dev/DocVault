@@ -8,9 +8,9 @@ import androidx.compose.ui.graphics.Color
  */
 
 // --- Dark Mode (Deep Indigo & Neon Accents) ---
-val DarkBg = Color(0xFF0A091E)      // Very deep navy/black
-val DarkSurf = Color(0xFF161432)    // Lighter indigo for surfaces
-val DarkPrim = Color(0xFF815BF1)    // Vibrant electric purple
+val DarkBg = Color(0xFF000000)      // Very deep navy/black
+val DarkSurf = Color(0xFF243B48)    // Lighter indigo for surfaces
+val DarkPrim = Color(0xFFEE2E6D)    // Vibrant electric purple
 val DarkSec = Color(0xFF00F2FE)     // Cyan accent
 val DarkOnSurf = Color(0xFFE0E0E0)
 val DarkAccent = Color(0xFFFF2D55)  // Vibrant pink for highlights

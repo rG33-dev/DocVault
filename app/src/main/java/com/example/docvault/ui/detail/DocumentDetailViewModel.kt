@@ -1,5 +1,8 @@
 package com.example.docvault.ui.detail
 
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,19 +13,14 @@ import com.example.docvault.domain.model.DocumentCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 import java.io.InputStream
 import javax.inject.Inject
 
 /**
  * ViewModel for the Document Detail screen.
- *
- * It manages the presentation of a single document's metadata and content.
- * Provides functionality for editing metadata, deleting, and performing 
- * processing tasks like aggressive compression and PDF conversion.
- *
- * @property repository The [DocumentRepository] for document data management.
- * @property fileRepository The [FileRepository] for accessing encrypted files.
- * @property savedStateHandle Used to retrieve the document ID from navigation arguments.
+ * 
+ * Handles document metadata updates, deletion, processing, and sharing.
  */
 @HiltViewModel
 class DocumentDetailViewModel @Inject constructor(
@@ -33,9 +31,6 @@ class DocumentDetailViewModel @Inject constructor(
 
     private val docId: Long = checkNotNull(savedStateHandle["docId"])
 
-    /**
-     * The UI state representing the current document and loading status.
-     */
     val uiState: StateFlow<DocumentDetailUiState> = repository.getDocumentById(docId)
         .map { doc ->
             if (doc != null) {
@@ -50,21 +45,6 @@ class DocumentDetailViewModel @Inject constructor(
             initialValue = DocumentDetailUiState(isLoading = true)
         )
 
-    /**
-     * Updates the metadata (title and category) of the current document.
-     *
-     * @param title The new title for the document.
-     * @param category The new category for the document.
-     */
-    fun updateMetadata(title: String, category: DocumentCategory) {
-        viewModelScope.launch {
-            repository.updateDocumentMetadata(docId, title, category)
-        }
-    }
-
-    /**
-     * Deletes the current document from the vault.
-     */
     fun deleteDocument() {
         val doc = uiState.value.document ?: return
         viewModelScope.launch {
@@ -72,14 +52,12 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Processes the current document with optional compression and PDF conversion.
-     *
-     * @param compress Whether to compress the document.
-     * @param toPdf Whether to convert the document to PDF.
-     * @param quality The quality level for compression (0-100).
-     * @param targetSizeKb Optional target size in KB for aggressive compression (e.g., 39 for < 40KB).
-     */
+    fun updateMetadata(title: String, category: DocumentCategory) {
+        viewModelScope.launch {
+            repository.updateDocumentMetadata(docId, title, category)
+        }
+    }
+
     fun processDocument(
         compress: Boolean, 
         toPdf: Boolean, 
@@ -92,13 +70,30 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Returns an [InputStream] for the decrypted content of the file.
-     *
-     * @param filePath The absolute path of the encrypted file.
-     * @return Decrypted [InputStream].
-     */
     fun getDecryptedStream(filePath: String): InputStream {
         return fileRepository.getEncryptedFile(filePath)
+    }
+
+    /**
+     * Decrypts the document into a temporary file in the cache directory 
+     * to allow external applications to access it via FileProvider.
+     */
+    fun getShareUri(context: Context): Uri? {
+        val doc = uiState.value.document ?: return null
+        return try {
+            val cacheDir = File(context.cacheDir, "shared_documents").apply { if (!exists()) mkdirs() }
+            val extension = if (doc.fileType == "application/pdf") ".pdf" else ".jpg"
+            val tempFile = File(cacheDir, "${doc.title.replace(" ", "_")}$extension")
+            
+            fileRepository.getEncryptedFile(doc.filePath).use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            
+            FileProvider.getUriForFile(context, "com.example.docvault.fileprovider", tempFile)
+        } catch (e: Exception) {
+            null
+        }
     }
 }
