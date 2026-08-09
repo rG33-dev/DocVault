@@ -11,7 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-//mport androidx.compose.material.icons.automirrored.filled.Description
+import androidx.compose.material.icons.automirrored.filled.Notes
+//import androidx.compose.material.icons.automirrored.filled.Description
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,7 +38,7 @@ import kotlinx.coroutines.launch
  * 
  * Redesigned with premium Productivity UI.
  * Features a high-contrast preview and categorized metadata view.
- * Supports Feature 4 (Edit & Delete) and Sharing.
+ * Supports Feature 4 (Edit & Delete) and Platform-wide Sharing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +113,7 @@ fun DocumentDetailScreen(
                     ) {
                         Icon(Icons.Default.AutoFixHigh, contentDescription = null)
                         Spacer(Modifier.width(12.dp))
-                        Text("Optimize Document", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Optimize & Compress", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -158,7 +159,7 @@ fun DocumentDetailScreen(
             onConfirm = { title, category -> 
                 viewModel.updateMetadata(title, category)
                 showEditDialog = false
-                scope.launch { snackbarHostState.showSnackbar("Document updated") }
+                scope.launch { snackbarHostState.showSnackbar("Document metadata updated") }
             }
         )
     }
@@ -176,7 +177,7 @@ fun DocumentDetailScreen(
                 onConfirm = { compress, toPdf, aggressive ->
                     viewModel.processDocument(compress || aggressive, toPdf, targetSizeKb = if (aggressive) 39 else null)
                     showProcessSheet = false
-                    scope.launch { snackbarHostState.showSnackbar("Processing started...") }
+                    scope.launch { snackbarHostState.showSnackbar("Optimization started...") }
                 }
             )
         }
@@ -202,7 +203,7 @@ fun DocumentDetailContent(
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Added on ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(document.createdAt))}",
+            text = "Last updated ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(document.updatedAt))}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
         )
@@ -235,7 +236,7 @@ fun DocumentDetailContent(
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.PictureAsPdf, modifier = Modifier.size(80.dp), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.AutoMirrored.Filled.Notes, modifier = Modifier.size(80.dp), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(16.dp))
                         Text("PDF Document", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
@@ -245,13 +246,13 @@ fun DocumentDetailContent(
         
         Spacer(Modifier.height(32.dp))
         
-        // Enhanced Metadata Sections
+        // Metadata Sections
         DetailSection(
-            title = "File Properties",
+            title = "File Details",
             items = listOf(
                 "Category" to document.category.name,
-                "Format" to document.fileType.substringAfter("/").uppercase(),
-                "Size" to "${document.size / 1024} KB"
+                "File Format" to document.fileType.substringAfter("/").uppercase(),
+                "Encrypted Size" to "${document.size / 1024} KB"
             )
         )
         
@@ -276,7 +277,7 @@ fun DetailSection(title: String, items: List<Pair<String, String>>) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             items.forEachIndexed { index, pair ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(pair.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     Text(pair.second, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 }
@@ -329,7 +330,7 @@ fun EditDocumentDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = { if (title.isNotBlank()) onConfirm(title, category) }) { Text("Save") } },
+        confirmButton = { Button(onClick = { if (title.isNotBlank()) onConfirm(title, category) }) { Text("Save Changes") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

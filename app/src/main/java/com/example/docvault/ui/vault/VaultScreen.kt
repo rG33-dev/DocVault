@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -20,10 +21,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 //import androidx.compose.material.icons.automirrored.filled.Description
-import androidx.compose.material.icons.automirrored.filled.EventNote
-//import androidx.compose.material.icons.automirrored.filled.History
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.automirrored.filled.Notes
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,12 +46,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.docvault.R
 import com.example.docvault.domain.model.Document
 import com.example.docvault.domain.model.DocumentCategory
 import com.example.docvault.ui.components.LoadingScreen
@@ -52,7 +67,7 @@ import kotlinx.coroutines.launch
  * The main dashboard of DocVault.
  * 
  * Features premium Productivity & Finance UI with curved headers and bold typography.
- * Supports Categorized saving where users can pick a type (ID, Marksheet, etc.) for each document.
+ * Supports Categorized saving with a metadata confirmation dialog and a "Saved" popup.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +87,7 @@ fun VaultScreen(
     var isQrScanningMode by remember { mutableStateOf(false) }
     var showCombineDialog by remember { mutableStateOf(false) }
     
-    // Metadata Dialog State for saving new docs with specific types
+    // Metadata Dialog State for saving new docs
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingFileType by remember { mutableStateOf<String?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -337,7 +352,11 @@ fun VaultHeader(
                         if (isSelectionMode) {
                             IconButton(onClick = onClearSelection) { Icon(Icons.Default.Close, contentDescription = null) }
                         } else {
-                            Icon(Icons.Default.Shield, contentDescription = null, tint = Color.White, modifier = Modifier.padding(start = 16.dp).size(24.dp))
+                            Image(
+                                painter = painterResource(id = R.drawable.evault),
+                                contentDescription = "DocVault Logo",
+                                modifier = Modifier.padding(start = 16.dp).size(40.dp).clip(CircleShape)
+                            )
                         }
                     },
                     actions = {
@@ -478,8 +497,17 @@ fun DocumentCard(document: Document, isSelected: Boolean, onClick: () -> Unit, o
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (document.fileType == "application/pdf") Icons.AutoMirrored.Filled.EventNote else Icons.Default.Image,
+                    imageVector = if (document.fileType == "application/pdf") Icons.AutoMirrored.Filled.Note else Icons.AutoMirrored.Filled.InsertDriveFile,
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            if (isSelected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    modifier = Modifier.align(Alignment.End).size(24.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
