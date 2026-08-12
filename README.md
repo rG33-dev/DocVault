@@ -4,7 +4,8 @@ DocVault is a modern Android document scanner and management application built w
 
 The application provides an on-device workflow for capturing documents, extracting information using Google ML Kit, processing barcodes, and securely managing document files.
 
----
+<img width="1280" height="853" alt="photo_2026-08-13_00-50-13" src="https://github.com/user-attachments/assets/74882008-54d3-4dda-9388-644879dd816d" />
+
 
 ## ✨ Features
 
